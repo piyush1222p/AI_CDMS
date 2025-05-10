@@ -1,37 +1,49 @@
+import sys
+import asyncio
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import asyncio
 import os
-from transformers import pipeline
+import tempfile
+from transformers import pipeline, Pipeline
+import traceback
+import logging
+import shutil
 
-# Initialize FastAPI app
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
 
-# CORS Middleware to allow frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace "*" with specific domains in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Supported Languages and Commands
 SUPPORTED_LANGUAGES = {
-    "python": "python",
-    "javascript": "node",
-    "c": "gcc",
+    "python": sys.executable,
     "cpp": "g++",
     "java": "javac",
 }
 
-# Load the Hugging Face GPT-2 model
-generator = pipeline('text-generation', model='gpt2')
+try:
+    generator: Pipeline = pipeline('text-generation', model='gpt2')
+    logger.info("GPT-2 model loaded successfully.")
+except Exception as e:
+    logger.error(f"Error loading GPT-2 model: {e}")
 
 class CodeRequest(BaseModel):
     language: str
     code: str
+    user_input: str = ""
 
 class AIRequest(BaseModel):
     language: str
@@ -40,131 +52,155 @@ class AIRequest(BaseModel):
 
 class BackendCodeRequest(BaseModel):
     code: str
-    query: str  # Specific question or analysis request for the code
+    query: str
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.post("/check-code")
 async def check_code_endpoint(request: CodeRequest):
-    """
-    Endpoint to Execute Code and Return Output/Errors
-    """
     try:
-        response = await execute_code_async(request.language, request.code)
-        return {"message": response}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if not request.language or not request.code.strip():
+            raise HTTPException(status_code=400, detail="Language and code must be provided.")
 
+        response = await execute_code_async(request.language, request.code, request.user_input)
+        return {"message": response}
+    except HTTPException as http_exc:
+        logger.error(f"HTTP Exception: {http_exc.detail}")
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        logger.error("Traceback: %s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail="An unknown error occurred.")
 
 @app.post("/analyze-code")
 async def analyze_code_with_ai_endpoint(request: AIRequest):
-    """
-    Endpoint to Analyze Code with AI and Provide Feedback
-    """
     try:
+        if not request.language or not request.code.strip() or not request.query.strip():
+            raise HTTPException(status_code=400, detail="Language, code, and query must be provided.")
+
         ai_feedback = await analyze_code(request.language, request.code, request.query)
         return {"feedback": ai_feedback}
+    except HTTPException as http_exc:
+        logger.error(f"HTTP Exception: {http_exc.detail}")
+        raise http_exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+        logger.error(f"Unexpected error: {str(e)}")
+        logger.error("Traceback: %s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail="An unknown error occurred.")
 
 @app.post("/analyze-backend-code")
 async def analyze_backend_code_endpoint(request: BackendCodeRequest):
-    """
-    Endpoint to analyze backend code and provide AI feedback.
-    """
     try:
+        if not request.code.strip() or not request.query.strip():
+            raise HTTPException(status_code=400, detail="Code and query must be provided.")
+
         ai_feedback = await analyze_code_with_ai(request.code, request.query)
         return {"feedback": ai_feedback}
+    except HTTPException as http_exc:
+        logger.error(f"HTTP Exception: {http_exc.detail}")
+        raise http_exc
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected error: {str(e)}")
+        logger.error("Traceback: %s", traceback.format_exc())
+        raise HTTPException(status_code=500, detail="An unknown error occurred.")
 
-
-async def execute_code_async(language, code):
-    """
-    Executes the provided code asynchronously and returns the output or errors.
-    """
+async def execute_code_async(language, code, user_input=""):
     language = language.lower()
     if language not in SUPPORTED_LANGUAGES:
-        return f"Unsupported language. Supported languages: {', '.join(SUPPORTED_LANGUAGES.keys())}"
+        raise HTTPException(status_code=400, detail=f"Unsupported language: {language}")
 
-    # Create a temporary file for the code
-    file_extension = get_file_extension(language)
-    temp_file = f"temp_code{file_extension}"
-    with open(temp_file, "w") as f:
-        f.write(code)
-
+    temp_dir = tempfile.mkdtemp()
+    file_ext = get_file_extension(language)
     try:
-        # Execute the code asynchronously
-        if language in ["python", "javascript"]:
-            process = await asyncio.create_subprocess_exec(
-                SUPPORTED_LANGUAGES[language],
-                temp_file,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        elif language in ["c", "cpp"]:
-            compile_command = [SUPPORTED_LANGUAGES[language], temp_file, "-o", "temp.out"]
-            compile_process = await asyncio.create_subprocess_exec(
-                *compile_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            compile_stdout, compile_stderr = await compile_process.communicate()
-
-            if compile_process.returncode != 0:
-                return f"Compilation Error:\n{compile_stderr.decode()}"
-
-            process = await asyncio.create_subprocess_exec(
-                "./temp.out",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-        elif language == "java":
-            compile_command = [SUPPORTED_LANGUAGES[language], temp_file]
-            compile_process = await asyncio.create_subprocess_exec(
-                *compile_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            compile_stdout, compile_stderr = await compile_process.communicate()
-
-            if compile_process.returncode != 0:
-                return f"Compilation Error:\n{compile_stderr.decode()}"
-
-            class_name = os.path.splitext(os.path.basename(temp_file))[0]
-            process = await asyncio.create_subprocess_exec(
-                "java",
-                "-cp",
-                ".",
-                class_name,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+        if language == "java":
+            class_name = extract_java_class_name(code)
+            if not class_name:
+                shutil.rmtree(temp_dir)
+                return "Error: Could not detect a public class in your Java code."
+            temp_file_path = os.path.join(temp_dir, f"{class_name}.java")
+            with open(temp_file_path, "w", encoding="utf-8") as temp_file:
+                temp_file.write(code)
+            try:
+                compile_proc = await asyncio.create_subprocess_exec(
+                    "javac", temp_file_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=temp_dir,
+                )
+                c_stdout, c_stderr = await compile_proc.communicate()
+                if compile_proc.returncode != 0:
+                    return f"Compilation Error:\n{c_stderr.decode()}"
+            except FileNotFoundError:
+                return "Java compiler (javac) not found. Please install Java JDK."
+            try:
+                run_proc = await asyncio.create_subprocess_exec(
+                    "java", class_name,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=temp_dir,
+                )
+                r_stdout, r_stderr = await run_proc.communicate(input=user_input.encode() if user_input else None)
+                if run_proc.returncode != 0:
+                    return f"Runtime Error:\n{r_stderr.decode()}"
+                else:
+                    return r_stdout.decode()
+            except FileNotFoundError:
+                return "Java runtime (java) not found. Please install Java JDK."
         else:
-            return "Unexpected error occurred while processing the code."
+            temp_file_path = os.path.join(temp_dir, f"main{file_ext}")
+            with open(temp_file_path, "w", encoding="utf-8") as temp_file:
+                temp_file.write(code)
 
-        stdout, stderr = await process.communicate()
+            if not os.path.exists(temp_file_path):
+                raise HTTPException(status_code=500, detail="Temporary file not found.")
 
-        if process.returncode != 0:
-            return f"Runtime Error:\n{stderr.decode()}"
-        else:
-            return f"Code executed successfully.\nOutput:\n{stdout.decode()}"
+            if language == "python":
+                command = [sys.executable, temp_file_path]
+                proc = await asyncio.create_subprocess_exec(
+                    *command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.PIPE,
+                    cwd=temp_dir,
+                )
+                stdout, stderr = await proc.communicate(input=user_input.encode() if user_input else None)
+                if proc.returncode != 0:
+                    return f"Runtime Error:\n{stderr.decode()}"
+                else:
+                    return f"{stdout.decode()}"
+
+            elif language == "cpp":
+                exe_path = os.path.join(temp_dir, "a.exe" if sys.platform == "win32" else "a.out")
+                compile_proc = await asyncio.create_subprocess_exec(
+                    "g++", temp_file_path, "-o", exe_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=temp_dir,
+                )
+                c_stdout, c_stderr = await compile_proc.communicate()
+                if compile_proc.returncode != 0:
+                    return f"Compilation Error:\n{c_stderr.decode()}"
+                run_proc = await asyncio.create_subprocess_exec(
+                    exe_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    stdin=asyncio.subprocess.PIPE,
+                    cwd=temp_dir,
+                )
+                r_stdout, r_stderr = await run_proc.communicate(input=user_input.encode() if user_input else None)
+                if run_proc.returncode != 0:
+                    return f"Runtime Error:\n{r_stderr.decode()}"
+                else:
+                    return f"{r_stdout.decode()}"
+            else:
+                return "Language not supported yet."
     finally:
-        # Clean up temporary files
-        try:
-            os.remove(temp_file)
-            if language in ["c", "cpp"]:
-                os.remove("temp.out")
-            elif language == "java":
-                os.remove(temp_file.replace(".java", ".class"))
-        except Exception:
-            pass  # Ignore errors during cleanup
-
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 async def analyze_code(language, code, query):
-    """
-    Uses AI to analyze code and provide feedback.
-    """
     prompt = f"""
     Analyze the following {language} code and answer the query: "{query}"
 
@@ -172,17 +208,12 @@ async def analyze_code(language, code, query):
     {code}
     """
     try:
-        # Use the Hugging Face model to generate a response
         response = generator(prompt, max_length=500, num_return_sequences=1)
         return response[0]['generated_text']
     except Exception as e:
         return f"AI Analysis Error: {str(e)}"
 
-
 async def analyze_code_with_ai(code: str, query: str) -> str:
-    """
-    Uses AI to analyze the backend code and provide AI feedback.
-    """
     prompt = f"""
     You are an expert backend developer and code reviewer. Analyze the following backend code and answer the query: "{query}".
 
@@ -190,22 +221,20 @@ async def analyze_code_with_ai(code: str, query: str) -> str:
     {code}
     """
     try:
-        # Generate a response using the Hugging Face model
         response = generator(prompt, max_length=500, num_return_sequences=1)
         return response[0]['generated_text']
     except Exception as e:
         return f"Error analyzing code: {str(e)}"
 
-
 def get_file_extension(language):
-    """
-    Get the file extension for a given programming language.
-    """
     extensions = {
         "python": ".py",
-        "javascript": ".js",
-        "c": ".c",
         "cpp": ".cpp",
         "java": ".java",
     }
     return extensions.get(language, "")
+
+def extract_java_class_name(code):
+    import re
+    match = re.search(r'public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)', code)
+    return match.group(1) if match else None

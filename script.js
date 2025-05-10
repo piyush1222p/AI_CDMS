@@ -3,19 +3,17 @@ const BASE_URL = "http://127.0.0.1:8000"; // Update this if backend is hosted el
 document.addEventListener("DOMContentLoaded", () => {
     const languageSelect = document.getElementById("language");
     const codeTextarea = document.getElementById("code");
-    const aiQueryTextarea = document.getElementById("ai-query");
+    const aiQueryTextarea = document.getElementById("query");
     const runCodeButton = document.getElementById("run-code");
     const analyzeCodeButton = document.getElementById("analyze-code");
-    const backendCodeTextarea = document.getElementById("backend-code");
-    const backendQueryTextarea = document.getElementById("backend-query");
-    const analyzeBackendCodeButton = document.getElementById("analyze-backend-code");
     const outputContent = document.getElementById("output-content");
     const aiFeedback = document.getElementById("ai-feedback");
-    const backendFeedback = document.getElementById("backend-feedback");
+    const programInput = document.getElementById("program-input"); // new input element
 
     const runCode = async () => {
         const language = languageSelect.value;
         const code = codeTextarea.value;
+        const user_input = programInput.value; // get the program input value
 
         if (!language || !code) {
             alert("Please select a language and enter code.");
@@ -27,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const response = await fetch(`${BASE_URL}/check-code`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ language, code }),
+                body: JSON.stringify({ language, code, user_input }), // send user_input to backend
             });
             const result = await response.json();
 
@@ -70,35 +68,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    const analyzeBackendCode = async () => {
-        const code = backendCodeTextarea.value;
-        const query = backendQueryTextarea.value;
-
-        if (!code || !query) {
-            alert("Please enter backend code and a query for analysis.");
-            return;
-        }
-
-        backendFeedback.textContent = "Analyzing backend code with AI...";
-        try {
-            const response = await fetch(`${BASE_URL}/analyze-backend-code`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ code, query }),
-            });
-            const result = await response.json();
-
-            if (response.ok) {
-                backendFeedback.textContent = result.feedback || "Backend code analysis completed.";
-            } else {
-                backendFeedback.textContent = `Error: ${result.detail || "Unknown error."}`;
-            }
-        } catch (error) {
-            backendFeedback.textContent = "Error: Unable to connect to the server.";
-        }
-    };
-
     runCodeButton.addEventListener("click", runCode);
     analyzeCodeButton.addEventListener("click", analyzeCode);
-    analyzeBackendCodeButton.addEventListener("click", analyzeBackendCode);
 });

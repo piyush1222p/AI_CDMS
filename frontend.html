@@ -1,223 +1,380 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Code Management System</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        /* General Styles */
-        body {
-            font-family: 'Arial', sans-serif;
-            margin: 0;
-            padding: 0;
-            background: linear-gradient(135deg, #0D47A1, #1976D2);
-            color: #ffffff;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Code Manager</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/tsparticles@3.3.0/tsparticles.bundle.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap');
 
-        header {
-            background-color: #0D47A1;
-            padding: 1.5rem;
-            text-align: center;
-            font-size: 2rem;
-            font-weight: bold;
-            color: #ffffff;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-        }
+    body {
+      font-family: 'Orbitron', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #121212;
+      color: #ffffff;
+      overflow-x: hidden;
+      transition: background 0.5s, color 0.5s;
+    }
 
-        header .logo {
-            display: inline-block;
-            font-size: 2.5rem;
-            color: #4CAF50;
-        }
+    header {
+      text-align: center;
+      padding: 2rem;
+      color: #d6a4ff;
+      font-size: 2.5rem;
+      letter-spacing: 2px;
+      background: none;
+      text-shadow: 0 0 10px #d6a4ff, 0 0 20px #d6a4ff;
+    }
 
-        header .tagline {
-            font-size: 0.9rem;
-            margin-top: 5px;
-            text-transform: none;
-            display: block;
-            color: #B3E5FC;
-        }
+    .tagline {
+      font-size: 1rem;
+      color: #c792ea;
+    }
 
-        .form-section {
-            background: white;
-            color: #333;
-            margin: 2rem auto;
-            padding: 2rem;
-            border-radius: 12px;
-            max-width: 800px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-        }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 8px 32px rgba(158, 117, 255, 0.37);
+      backdrop-filter: blur(10px);
+      padding: 2rem;
+      margin: 2rem auto;
+      max-width: 900px;
+      color: #fff;
+    }
 
-        .form-section h2 {
-            text-align: center;
-            font-size: 2rem;
-            margin-bottom: 1rem;
-            color: #0D47A1;
-        }
+    label, select, textarea, button {
+      width: 100%;
+      margin-bottom: 1rem;
+      border-radius: 10px;
+      padding: 0.8rem;
+      font-size: 1rem;
+      border: none;
+    }
 
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
+    select {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 2px solid #d6a4ff;
+      transition: all 0.3s ease;
+    }
 
-        label {
-            font-weight: bold;
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #555;
-        }
+    select:focus {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: #8360c3;
+    }
 
-        select, textarea, button {
-            width: 100%;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 0.8rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
+    select option {
+      background: rgba(0, 0, 0, 0.2);
+      color: #fff;
+    }
 
-        textarea {
-            min-height: 150px;
-            resize: vertical;
-        }
+    textarea {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
 
-        button {
-            background: #4CAF50;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            text-transform: uppercase;
-            border: none;
-            margin-top: 1rem;
-        }
+    button {
+      background: linear-gradient(45deg, #d6a4ff, #8360c3);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
 
-        button:hover {
-            background: #43A047;
-            box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
-        }
+    button:hover {
+      background: linear-gradient(45deg, #b388ff, #6a1b9a);
+      box-shadow: 0 0 15px #d6a4ff;
+    }
 
-        .button-group {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
+    .output-section {
+      margin: 2rem auto;
+      max-width: 900px;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      color: #a7ffeb;
+      font-family: monospace;
+      box-shadow: 0 0 15px #b388ff55;
+    }
 
-        .output-section {
-            margin-top: 2rem;
-            padding: 1.5rem;
-            background: #F4F4F9;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            color: #333;
-            font-family: monospace;
-        }
+    .output-header {
+      text-align: center;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      color: #e1bee7;
+      text-shadow: 0 0 10px #b388ff;
+    }
 
-        .output-header {
-            font-size: 1.2rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            text-align: center;
-            color: #4CAF50;
-        }
+    .ai-animation {
+      display: flex;
+      justify-content: center;
+      margin: 2rem;
+    }
 
-        footer {
-            text-align: center;
-            padding: 1rem;
-            background: #0D47A1;
-            color: #B3E5FC;
-            font-size: 0.9rem;
-            margin-top: 2rem;
-        }
+    .neon-ai {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #d6a4ff 0%, #6a1b9a 100%);
+      animation: pulse 2s infinite;
+      box-shadow: 0 0 20px #d6a4ff, 0 0 40px #d6a4ff66;
+    }
 
-        footer a {
-            color: #4CAF50;
-            text-decoration: none;
-        }
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.1);
+        opacity: 0.7;
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
 
-        footer a:hover {
-            text-decoration: underline;
-        }
-    </style>
+    #tsparticles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.7);
+      color: #d6a4ff;
+      font-size: 0.9rem;
+    }
+
+    .dropdown-content {
+      display: block;
+      background-color: #1a1a1a;
+      color: #fff;
+    }
+
+    .dropdown-content select {
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      border: 2px solid #d6a4ff;
+    }
+
+    .dropdown-content select option {
+      background: rgba(0, 0, 0, 0.5);
+      color: #fff;
+    }
+
+    .notice {
+      background: #fff8c6;
+      color: #856404;
+      padding: 8px;
+      border-radius: 5px;
+      margin-bottom: 16px;
+      border: 1px solid #ffeeba;
+      font-size: 1rem;
+      font-family: Arial, sans-serif;
+    }
+  </style>
 </head>
 <body>
-    <header>
-        <span class="logo">CodeManager</span>
-        <span class="tagline">Unified Code Execution and AI Analysis</span>
-    </header>
+  <div id="tsparticles"></div>
 
-    <main>
-        <!-- General Code Execution Section -->
-        <section class="form-section">
-            <h2>Code Input and Operations</h2>
-            <form id="code-form">
-                <div class="form-group">
-                    <label for="language">Select Programming Language:</label>
-                    <select id="language" name="language" required>
-                        <option value="">-- Select Language --</option>
-                        <option value="python">Python</option>
-                        <option value="javascript">JavaScript</option>
-                        <option value="c">C</option>
-                        <option value="cpp">C++</option>
-                        <option value="java">Java</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="code">Enter Your Code:</label>
-                    <textarea id="code" name="code" placeholder="Write your code here..." required></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="ai-query">Ask AI About Your Code (Optional):</label>
-                    <textarea id="ai-query" name="ai-query" placeholder="What do you want AI to analyze about your code? E.g., 'Explain this code'"></textarea>
-                </div>
-                <div class="button-group">
-                    <button type="button" id="run-code"><i class="fas fa-play"></i> Run Code</button>
-                    <button type="button" id="analyze-code"><i class="fas fa-brain"></i> Analyze with AI</button>
-                </div>
-            </form>
-        </section>
+  <header>
+    <div>🤖 AI Code Manager</div>
+    <div class="tagline">Smarter Coding with Artificial Intelligence</div>
+  </header>
 
-        <!-- Backend Code Analysis Section -->
-        <section class="form-section">
-            <h2>Analyze Backend Code</h2>
-            <form id="backend-code-form">
-                <div class="form-group">
-                    <label for="backend-code">Enter Backend Code:</label>
-                    <textarea id="backend-code" name="backend-code" placeholder="Paste your backend code here..." required></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="backend-query">Ask AI About Your Code:</label>
-                    <textarea id="backend-query" name="backend-query" placeholder="What do you want AI to analyze? E.g., 'Explain this backend code'"></textarea>
-                </div>
-                <div class="button-group">
-                    <button type="button" id="analyze-backend-code"><i class="fas fa-brain"></i> Analyze Backend Code</button>
-                </div>
-            </form>
-        </section>
+  <div class="ai-animation">
+    <div class="neon-ai"></div>
+  </div>
 
-        <!-- Output Sections -->
-        <section class="output-section">
-            <div class="output-header">Execution Output:</div>
-            <div id="output-content">No Output Yet</div>
-        </section>
+  <div class="glass-card">
+    <div class="notice">
+      <strong>Note:</strong> If your code uses <code>Scanner</code> in Java, <code>cin</code> in C++, or <code>input()</code> in Python, please provide the required input below. Otherwise, you may get a runtime error.
+    </div>
+    <h2>Code Input and Operations</h2>
+    <label for="language">Language:</label>
+    <div class="dropdown-content">
+      <select id="language">
+        <option value="">-- Select --</option>
+        <option value="python">Python</option>
+        <option value="cpp">C++</option>
+        <option value="java">Java</option>
+      </select>
+    </div>
 
-        <section class="output-section">
-            <div class="output-header">AI Feedback:</div>
-            <div id="ai-feedback">No Feedback Yet</div>
-        </section>
+    <label for="code">Code:</label>
+    <textarea id="code" rows="8" placeholder="Write your code..."></textarea>
 
-        <section class="output-section">
-            <div class="output-header">Backend Code Analysis Feedback:</div>
-            <div id="backend-feedback">No Feedback Yet</div>
-        </section>
-    </main>
+    <!-- New Program Input for stdin -->
+    <label for="program-input">Program Input (stdin):</label>
+    <textarea id="program-input" rows="3" placeholder="Enter input for your program here..."></textarea>
 
-    <footer>
-        Built with ❤️ by <a href="#">YourName</a>
-    </footer>
+    <label for="query">Analyze with AI:</label>
+    <textarea id="query" rows="4" placeholder="E.g., Explain this code"></textarea>
 
-    <script src="script.js"></script>
+    <button id="run-code"><i class="fas fa-play"></i> Run</button>
+    <button id="analyze-code"><i class="fas fa-brain"></i> Analyze</button>
+  </div>
+
+  <div class="glass-card">
+    <h2>Backend Code Analysis</h2>
+    <label for="backend-code">Backend Code:</label>
+    <textarea id="backend-code" rows="8" placeholder="Write backend code..."></textarea>
+
+    <label for="backend-query">Query:</label>
+    <textarea id="backend-query" rows="4" placeholder="E.g., Analyze this backend logic"></textarea>
+
+    <button id="analyze-backend-code"><i class="fas fa-code"></i> Analyze Backend</button>
+  </div>
+
+  <div class="output-section">
+    <div class="output-header">Execution Output:</div>
+    <div id="output-content">No Output Yet</div>
+  </div>
+
+  <div class="output-section">
+    <div class="output-header">AI Feedback:</div>
+    <div id="ai-feedback">No Feedback Yet</div>
+  </div>
+
+  <footer>
+    Built with ⚡ by <a href="#" style="color:#d6a4ff;">AP</a>
+  </footer>
+
+  <script>
+    // Utility: Warn if probable need for input but none provided
+    function needsInputWarning(language, code, user_input) {
+      return (
+        (language === 'java' && /Scanner\s*\(/.test(code) && user_input.trim() === '') ||
+        (language === 'cpp' && /cin\s*>>/.test(code) && user_input.trim() === '') ||
+        (language === 'python' && /input\s*\(/.test(code) && user_input.trim() === '')
+      );
+    }
+
+    document.getElementById('run-code').onclick = async function() {
+      const language = document.getElementById('language').value;
+      const code = document.getElementById('code').value;
+      const user_input = document.getElementById('program-input').value;
+      const outputDiv = document.getElementById('output-content');
+
+      if (!language || !code.trim()) {
+        outputDiv.textContent = 'Please select a language and enter your code.';
+        return;
+      }
+
+      if (needsInputWarning(language, code, user_input)) {
+        if (!confirm('Your code appears to require input, but none was provided. This may cause a runtime error. Continue anyway?')) {
+          outputDiv.textContent = 'Execution cancelled. Please provide input if your code requires it.';
+          return;
+        }
+      }
+
+      outputDiv.textContent = 'Running...';
+
+      try {
+        const resp = await fetch('http://127.0.0.1:8000/check-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language, code, user_input })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          outputDiv.textContent = data.message || 'No output.';
+        } else {
+          outputDiv.textContent = data.detail || 'Unexpected error.';
+        }
+      } catch (e) {
+        outputDiv.textContent = 'Network error: ' + e;
+      }
+    };
+
+    document.getElementById('analyze-code').onclick = async function() {
+      const language = document.getElementById('language').value;
+      const code = document.getElementById('code').value;
+      const query = document.getElementById('query').value;
+      const feedbackDiv = document.getElementById('ai-feedback');
+
+      if (!language || !code.trim() || !query.trim()) {
+        feedbackDiv.textContent = 'Please select a language, enter code, and your AI query.';
+        return;
+      }
+
+      feedbackDiv.textContent = 'Analyzing...';
+
+      try {
+        const resp = await fetch('http://127.0.0.1:8000/analyze-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ language, code, query })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          feedbackDiv.textContent = data.feedback || 'No feedback.';
+        } else {
+          feedbackDiv.textContent = data.detail || 'Unexpected error.';
+        }
+      } catch (e) {
+        feedbackDiv.textContent = 'Network error: ' + e;
+      }
+    };
+
+    document.getElementById('analyze-backend-code').onclick = async function() {
+      const code = document.getElementById('backend-code').value;
+      const query = document.getElementById('backend-query').value;
+      const feedbackDiv = document.getElementById('ai-feedback');
+
+      if (!code.trim() || !query.trim()) {
+        feedbackDiv.textContent = 'Please enter backend code and your query.';
+        return;
+      }
+
+      feedbackDiv.textContent = 'Analyzing backend...';
+
+      try {
+        const resp = await fetch('http://127.0.0.1:8000/analyze-backend-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, query })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          feedbackDiv.textContent = data.feedback || 'No feedback.';
+        } else {
+          feedbackDiv.textContent = data.detail || 'Unexpected error.';
+        }
+      } catch (e) {
+        feedbackDiv.textContent = 'Network error: ' + e;
+      }
+    };
+
+    // Optional: particles background
+    tsParticles.load("tsparticles", {
+      background: { color: { value: "#121212" } },
+      fpsLimit: 60,
+      interactivity: {
+        events: { onClick: { enable: false }, onHover: { enable: false }, resize: true },
+      },
+      particles: {
+        color: { value: "#d6a4ff" },
+        links: { enable: true, color: "#d6a4ff", opacity: 0.2 },
+        move: { enable: true, speed: 1 },
+        number: { value: 48 },
+        opacity: { value: 0.2 },
+        shape: { type: "circle" },
+        size: { value: { min: 1, max: 3 } },
+      }
+    });
+  </script>
 </body>
 </html>
