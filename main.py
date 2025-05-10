@@ -1,20 +1,19 @@
 import sys
 import asyncio
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
 import tempfile
-from transformers import pipeline, Pipeline
 import traceback
 import logging
 import shutil
+import requests
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from dotenv import load_dotenv
 
-# Configure logging
+# Load environment variables from .env file (if present)
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -34,11 +33,8 @@ SUPPORTED_LANGUAGES = {
     "java": "javac",
 }
 
-try:
-    generator: Pipeline = pipeline('text-generation', model='gpt2')
-    logger.info("GPT-2 model loaded successfully.")
-except Exception as e:
-    logger.error(f"Error loading GPT-2 model: {e}")
+# Ollama model you want to use
+OLLAMA_MODEL = "mistral"  # Change this to e.g. "llama2" or "phi3" if you want a different model
 
 class CodeRequest(BaseModel):
     language: str
@@ -51,6 +47,10 @@ class AIRequest(BaseModel):
     query: str
 
 class BackendCodeRequest(BaseModel):
+    code: str
+    query: str
+
+class LocalAnalyzeRequest(BaseModel):
     code: str
     query: str
 
@@ -74,37 +74,67 @@ async def check_code_endpoint(request: CodeRequest):
         logger.error("Traceback: %s", traceback.format_exc())
         raise HTTPException(status_code=500, detail="An unknown error occurred.")
 
-@app.post("/analyze-code")
-async def analyze_code_with_ai_endpoint(request: AIRequest):
+def ollama_model_exists(model_name: str) -> bool:
     try:
-        if not request.language or not request.code.strip() or not request.query.strip():
-            raise HTTPException(status_code=400, detail="Language, code, and query must be provided.")
-
-        ai_feedback = await analyze_code(request.language, request.code, request.query)
-        return {"feedback": ai_feedback}
-    except HTTPException as http_exc:
-        logger.error(f"HTTP Exception: {http_exc.detail}")
-        raise http_exc
+        tags_resp = requests.get("http://localhost:11434/api/tags", timeout=5)
+        if tags_resp.status_code == 200:
+            tags = tags_resp.json().get("models", [])
+            return any(m.get("name", "") == model_name for m in tags)
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        logger.error("Traceback: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail="An unknown error occurred.")
+        logger.error(f"Error checking Ollama model: {str(e)}")
+    return False
+
+def ollama_generate(prompt: str, model: str = OLLAMA_MODEL):
+    if not ollama_model_exists(model):
+        raise HTTPException(
+            status_code=400,
+            detail=f'Ollama model "{model}" is not available. '
+                   f'Please run `ollama run {model}` or pull it first.'
+        )
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": model, "prompt": prompt}
+        )
+        if response.status_code == 200 and 'response' in response.json():
+            return response.json()['response'].strip()
+        return f"Error from local AI model: {response.text}"
+    except Exception as e:
+        return f"Error communicating with local AI model: {str(e)}"
+
+@app.post("/analyze-code")
+def analyze_code_with_ai_endpoint(request: AIRequest):
+    if not request.language or not request.code.strip() or not request.query.strip():
+        raise HTTPException(status_code=400, detail="Language, code, and query must be provided.")
+
+    prompt = (
+        f"Analyze the following {request.language} code and answer the query: \"{request.query}\"\n\n"
+        f"Code:\n{request.code}\n"
+    )
+    feedback = ollama_generate(prompt)
+    return {"feedback": feedback}
 
 @app.post("/analyze-backend-code")
-async def analyze_backend_code_endpoint(request: BackendCodeRequest):
-    try:
-        if not request.code.strip() or not request.query.strip():
-            raise HTTPException(status_code=400, detail="Code and query must be provided.")
+def analyze_backend_code_endpoint(request: BackendCodeRequest):
+    if not request.code.strip() or not request.query.strip():
+        raise HTTPException(status_code=400, detail="Code and query must be provided.")
 
-        ai_feedback = await analyze_code_with_ai(request.code, request.query)
-        return {"feedback": ai_feedback}
-    except HTTPException as http_exc:
-        logger.error(f"HTTP Exception: {http_exc.detail}")
-        raise http_exc
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        logger.error("Traceback: %s", traceback.format_exc())
-        raise HTTPException(status_code=500, detail="An unknown error occurred.")
+    prompt = (
+        f"You are an expert backend developer and code reviewer. "
+        f"Analyze the following backend code and answer the query: \"{request.query}\".\n\n"
+        f"Code:\n{request.code}\n"
+    )
+    feedback = ollama_generate(prompt)
+    return {"feedback": feedback}
+
+@app.post("/analyze-code-local")
+def analyze_code_local(request: LocalAnalyzeRequest):
+    prompt = (
+        f"Analyze the following code and answer the query: \"{request.query}\"\n\n"
+        f"Code:\n{request.code}\n"
+    )
+    feedback = ollama_generate(prompt)
+    return {"feedback": feedback}
 
 async def execute_code_async(language, code, user_input=""):
     language = language.lower()
@@ -199,32 +229,6 @@ async def execute_code_async(language, code, user_input=""):
                 return "Language not supported yet."
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-
-async def analyze_code(language, code, query):
-    prompt = f"""
-    Analyze the following {language} code and answer the query: "{query}"
-
-    Code:
-    {code}
-    """
-    try:
-        response = generator(prompt, max_length=500, num_return_sequences=1)
-        return response[0]['generated_text']
-    except Exception as e:
-        return f"AI Analysis Error: {str(e)}"
-
-async def analyze_code_with_ai(code: str, query: str) -> str:
-    prompt = f"""
-    You are an expert backend developer and code reviewer. Analyze the following backend code and answer the query: "{query}".
-
-    Code:
-    {code}
-    """
-    try:
-        response = generator(prompt, max_length=500, num_return_sequences=1)
-        return response[0]['generated_text']
-    except Exception as e:
-        return f"Error analyzing code: {str(e)}"
 
 def get_file_extension(language):
     extensions = {
