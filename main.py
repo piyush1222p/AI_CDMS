@@ -5,11 +5,11 @@ import tempfile
 import traceback
 import logging
 import shutil
-import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import git  # GitPython
 
 # Load environment variables from .env file (if present)
 load_dotenv()
@@ -33,26 +33,23 @@ SUPPORTED_LANGUAGES = {
     "java": "javac",
 }
 
-# Ollama model you want to use
-OLLAMA_MODEL = "mistral"  # Change this to e.g. "llama2" or "phi3" if you want a different model
-
 class CodeRequest(BaseModel):
     language: str
     code: str
     user_input: str = ""
 
-class AIRequest(BaseModel):
-    language: str
-    code: str
-    query: str
+# Version Control Models
+class CloneRepoRequest(BaseModel):
+    repo_url: str
+    local_path: str
 
-class BackendCodeRequest(BaseModel):
-    code: str
-    query: str
+class PullRepoRequest(BaseModel):
+    local_path: str
 
-class LocalAnalyzeRequest(BaseModel):
-    code: str
-    query: str
+class CommitPushRequest(BaseModel):
+    local_path: str
+    commit_message: str
+    branch: str = "main"  # Default to main if not provided
 
 @app.get("/health")
 def health_check():
@@ -63,7 +60,6 @@ async def check_code_endpoint(request: CodeRequest):
     try:
         if not request.language or not request.code.strip():
             raise HTTPException(status_code=400, detail="Language and code must be provided.")
-
         response = await execute_code_async(request.language, request.code, request.user_input)
         return {"message": response}
     except HTTPException as http_exc:
@@ -74,67 +70,45 @@ async def check_code_endpoint(request: CodeRequest):
         logger.error("Traceback: %s", traceback.format_exc())
         raise HTTPException(status_code=500, detail="An unknown error occurred.")
 
-def ollama_model_exists(model_name: str) -> bool:
+# --- Version Control Endpoints ---
+
+@app.post("/git/clone")
+def clone_repo(request: CloneRepoRequest):
     try:
-        tags_resp = requests.get("http://localhost:11434/api/tags", timeout=5)
-        if tags_resp.status_code == 200:
-            tags = tags_resp.json().get("models", [])
-            return any(m.get("name", "") == model_name for m in tags)
+        if os.path.exists(request.local_path):
+            raise HTTPException(status_code=400, detail="Target directory already exists.")
+        git.Repo.clone_from(request.repo_url, request.local_path)
+        return {"message": f"Repository cloned to {request.local_path}"}
     except Exception as e:
-        logger.error(f"Error checking Ollama model: {str(e)}")
-    return False
+        logger.error(f"Error cloning repo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error cloning repo: {str(e)}")
 
-def ollama_generate(prompt: str, model: str = OLLAMA_MODEL):
-    if not ollama_model_exists(model):
-        raise HTTPException(
-            status_code=400,
-            detail=f'Ollama model "{model}" is not available. '
-                   f'Please run `ollama run {model}` or pull it first.'
-        )
+@app.post("/git/pull")
+def pull_repo(request: PullRepoRequest):
     try:
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={"model": model, "prompt": prompt}
-        )
-        if response.status_code == 200 and 'response' in response.json():
-            return response.json()['response'].strip()
-        return f"Error from local AI model: {response.text}"
+        repo = git.Repo(request.local_path)
+        origin = repo.remotes.origin
+        pull_info = origin.pull()
+        return {"message": f"Pulled latest changes: {pull_info}"}
     except Exception as e:
-        return f"Error communicating with local AI model: {str(e)}"
+        logger.error(f"Error pulling repo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error pulling repo: {str(e)}")
 
-@app.post("/analyze-code")
-def analyze_code_with_ai_endpoint(request: AIRequest):
-    if not request.language or not request.code.strip() or not request.query.strip():
-        raise HTTPException(status_code=400, detail="Language, code, and query must be provided.")
+@app.post("/git/commit-push")
+def commit_and_push(request: CommitPushRequest):
+    try:
+        repo = git.Repo(request.local_path)
+        repo.git.add(A=True)
+        repo.index.commit(request.commit_message)
+        repo.git.checkout(request.branch)
+        origin = repo.remotes.origin
+        push_info = origin.push()
+        return {"message": f"Committed and pushed to {request.branch}: {push_info}"}
+    except Exception as e:
+        logger.error(f"Error committing/pushing: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error committing/pushing: {str(e)}")
 
-    prompt = (
-        f"Analyze the following {request.language} code and answer the query: \"{request.query}\"\n\n"
-        f"Code:\n{request.code}\n"
-    )
-    feedback = ollama_generate(prompt)
-    return {"feedback": feedback}
-
-@app.post("/analyze-backend-code")
-def analyze_backend_code_endpoint(request: BackendCodeRequest):
-    if not request.code.strip() or not request.query.strip():
-        raise HTTPException(status_code=400, detail="Code and query must be provided.")
-
-    prompt = (
-        f"You are an expert backend developer and code reviewer. "
-        f"Analyze the following backend code and answer the query: \"{request.query}\".\n\n"
-        f"Code:\n{request.code}\n"
-    )
-    feedback = ollama_generate(prompt)
-    return {"feedback": feedback}
-
-@app.post("/analyze-code-local")
-def analyze_code_local(request: LocalAnalyzeRequest):
-    prompt = (
-        f"Analyze the following code and answer the query: \"{request.query}\"\n\n"
-        f"Code:\n{request.code}\n"
-    )
-    feedback = ollama_generate(prompt)
-    return {"feedback": feedback}
+# ---- Code Execution (unchanged) ----
 
 async def execute_code_async(language, code, user_input=""):
     language = language.lower()
