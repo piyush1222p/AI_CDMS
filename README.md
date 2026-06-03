@@ -483,7 +483,7 @@ Check the [GitHub Projects](https://github.com/piyush1222p/AI_CDMS/projects) pag
 
 <div align="center">
 
-**Made with ❤️ by Piyush Patel**
+**Made with ❤️ by Piyush Shukla**
 
 [⭐ Star this repository](#) if you find it useful!
 
