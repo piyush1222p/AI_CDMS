@@ -450,7 +450,7 @@ This project is licensed under the **GNU General Public License v3.0** - see the
 
 ## 📧 Contact & Support
 
-- **Author:** Piyush Patel (@piyush1222p)
+- **Author:** Piyush Shukla (@piyush1222p)
 - **GitHub:** [piyush1222p/AI_CDMS](https://github.com/piyush1222p/AI_CDMS)
 - **Issues:** [Report a bug or request a feature](https://github.com/piyush1222p/AI_CDMS/issues)
 - **Discussions:** [Join the community discussion](https://github.com/piyush1222p/AI_CDMS/discussions)
